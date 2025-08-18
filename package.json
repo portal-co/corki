@@ -1,0 +1,7 @@
+{
+    "name": "@portal-solutions/corki",
+    "workspaces": [],
+    "devDependencies": {
+        "parcel": "^2.15.4"
+    }
+}
