@@ -7,7 +7,7 @@ use slh_dsa::signature::{Keypair, Signer, Verifier, rand_core::CryptoRngCore};
 #[doc(hidden)]
 pub mod __ {
     pub use core;
-    pub use paste;
+    // pub use paste;
 }
 const fn max(a: usize, b: usize) -> usize {
     if a > b { a } else { b }
@@ -22,8 +22,8 @@ const fn max_arr<const N: usize>(a: [usize; N]) -> usize {
     return m;
 }
 macro_rules! key_ty{
-    (enum $name:ident {$($a:ident [$b:ident] => $v:ty | $k:expr),*}) => {
-        $crate::__::paste::paste!{
+    (enum $name:ident ($kind:ident) {$($a:ident [$b:ident] => $v:ty | $k:expr),*}) => {
+        // $crate::__::paste::paste!{
             #[derive(Clone)]
             #[non_exhaustive]
             pub enum $name{
@@ -31,17 +31,17 @@ macro_rules! key_ty{
             }
             #[derive(Clone,Copy,Debug,Eq,PartialEq,Ord,PartialOrd,Hash)]
             #[non_exhaustive]
-            pub enum [<$name Kind>]{
+            pub enum $kind{
                 $($a),*
             }
-            impl $crate::__::core::fmt::Display for [<$name Kind>]{
+            impl $crate::__::core::fmt::Display for $kind{
                 fn fmt(&self, f: &mut $crate::__::core::fmt::Formatter<'_>) -> $crate::__::core::result::Result<(), $crate::__::core::fmt::Error>{
                     match self{
                         $(Self::$a => $crate::__::core::write!(f,$crate::__::core::stringify!($b))),*
                     }
                 }
             }
-            impl [<$name Kind>]{
+            impl $kind{
                 pub const LEN: usize = $name::LEN;
                 pub fn len(&self) -> usize{
                     match self{
@@ -57,9 +57,9 @@ macro_rules! key_ty{
             }
             impl $name{
                 pub const LEN: usize = $crate::max_arr([$($k),*]);
-                pub fn kind(&self) -> [<$name Kind>]{
+                pub fn kind(&self) -> $kind{
                     match self{
-                        $($name::$a{..} => [<$name Kind>]::$a),*,
+                        $($name::$a{..} => $kind::$a),*,
                         _ => unsafe{$crate::__::core::hint::unreachable_unchecked()}
                     }
                 }
@@ -69,21 +69,21 @@ macro_rules! key_ty{
                     }
                 }
             }
-        }
+        // }
     }
 }
-key_ty!(enum EncryptionKey{
+key_ty!(enum EncryptionKey (EncryptionKeyKind){
     Symmetric [S] => [u8;32] | (32),
     XWing [X] => x_wing::EncapsulationKey | x_wing::ENCAPSULATION_KEY_SIZE
 });
-key_ty!(enum DecryptionKey{
+key_ty!(enum DecryptionKey (DecryptionKeyKind){
     Symmetric [S] => [u8;32] | (32),
     XWing [X] => x_wing::DecapsulationKey | x_wing::DECAPSULATION_KEY_SIZE
 });
-key_ty!(enum SigningKey{
+key_ty!(enum SigningKey (SigningKeyKind){
     SLHDSA [s] => slh_dsa::SigningKey<slh_dsa::Shake256s> | (<<slh_dsa::Shake256s as slh_dsa::SigningKeyLen>::SkLen as typenum::Unsigned>::USIZE)
 });
-key_ty!(enum VerificationKey{
+key_ty!(enum VerificationKey (VerificationKeyKind){
     SLHDSA [s] => slh_dsa::VerifyingKey<slh_dsa::Shake256s> | (<<slh_dsa::Shake256s as slh_dsa::VerifyingKeyLen>::VkLen as typenum::Unsigned>::USIZE)
 });
 impl Into<EncryptionKey> for &'_ DecryptionKey {
