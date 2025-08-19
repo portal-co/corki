@@ -4,6 +4,13 @@ use either::Either;
 use kem::{Decapsulate, Encapsulate};
 use rand::{CryptoRng, Rng, RngCore};
 use slh_dsa::signature::{Keypair, Signer, Verifier, rand_core::CryptoRngCore};
+
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
+#[cfg(feature = "wasm-bindgen")]
+use wasm_bindgen::prelude::*;
+
 #[doc(hidden)]
 pub mod __ {
     pub use core;
@@ -22,14 +29,32 @@ const fn max_arr<const N: usize>(a: [usize; N]) -> usize {
     return m;
 }
 macro_rules! key_ty{
-    (enum $name:ident ($kind:ident) {$($a:ident [$b:ident] => $v:ty | $k:expr),*}) => {
+    (enum $name:ident ($kind:ident ; $wbg:ident) {$($a:ident [$b:ident] => $v:ty | $k:expr),*}) => {
         // $crate::__::paste::paste!{
             #[derive(Clone)]
             #[non_exhaustive]
             pub enum $name{
                 $($a{key: $v}),*
             }
+            #[derive(Clone)]
+            #[cfg_attr(feature = "wasm-bindgen",wasm_bindgen)]
+            #[repr(transparent)]
+            pub struct $wbg{
+                #[cfg_attr(feature = "wasm-bindgen",wasm_bindgen(skip))]
+                pub contents: $name
+            }
+            impl From<$name> for $wbg{
+                fn from(a: $name) -> Self{
+                    Self{contents: a}
+                }
+            }
+            impl From<$wbg> for $name{
+                fn from(a: $wbg) -> Self{
+                    a.contents
+                }
+            }
             #[derive(Clone,Copy,Debug,Eq,PartialEq,Ord,PartialOrd,Hash)]
+            #[cfg_attr(feature = "wasm-bindgen",wasm_bindgen)]
             #[non_exhaustive]
             pub enum $kind{
                 $($a),*
@@ -43,16 +68,38 @@ macro_rules! key_ty{
             }
             impl $kind{
                 pub const LEN: usize = $name::LEN;
-                pub fn len(&self) -> usize{
+                pub fn to_str(self) -> &'static str{
+                    match self{
+                        $(Self::$a => $crate::__::core::stringify!($b)),*
+                    }
+                }
+            }
+            #[cfg_attr(feature = "wasm-bindgen",wasm_bindgen)]
+            impl $kind{
+                #[cfg_attr(feature = "wasm-bindgen",wasm_bindgen)]
+                pub fn len(self) -> usize{
                     match self{
                         $(Self::$a => $k),*
                     }
                 }
+                #[cfg_attr(feature = "wasm-bindgen",wasm_bindgen)]
                 pub fn from_str(a: &str) -> $crate::__::core::option::Option<Self>{
                     $crate::__::core::option::Option::Some(match a{
                         $(a if a == $crate::__::core::stringify!($b) => Self::$a),*,
                         _ => return $crate::__::core::option::Option::None
                     })
+                }
+                #[cfg(feature = "wasm-bindgen")]
+                #[cfg_attr(feature = "wasm-bindgen",wasm_bindgen(js_name = "toString"))]
+                pub fn __wbg_to_string(self) -> ::alloc::string::String{
+                    return ::alloc::string::ToString::to_string(self.to_str())
+                }
+            }
+            #[cfg_attr(feature = "wasm-bindgen",wasm_bindgen)]
+            impl $wbg{
+                #[cfg_attr(feature = "wasm-bindgen",wasm_bindgen)]
+                pub fn kind(&self) -> $kind{
+                    self.contents.kind()
                 }
             }
             impl $name{
@@ -72,20 +119,42 @@ macro_rules! key_ty{
         // }
     }
 }
-key_ty!(enum EncryptionKey (EncryptionKeyKind){
+key_ty!(enum EncryptionKey (EncryptionKeyKind ; JsEncryptionKey){
     Symmetric [S] => [u8;32] | (32),
     XWing [X] => x_wing::EncapsulationKey | x_wing::ENCAPSULATION_KEY_SIZE
 });
-key_ty!(enum DecryptionKey (DecryptionKeyKind){
+key_ty!(enum DecryptionKey (DecryptionKeyKind ; JsDecryptionKey){
     Symmetric [S] => [u8;32] | (32),
     XWing [X] => x_wing::DecapsulationKey | x_wing::DECAPSULATION_KEY_SIZE
 });
-key_ty!(enum SigningKey (SigningKeyKind){
+key_ty!(enum SigningKey (SigningKeyKind ; JsSigningKey){
     SLHDSA [s] => slh_dsa::SigningKey<slh_dsa::Shake256s> | (<<slh_dsa::Shake256s as slh_dsa::SigningKeyLen>::SkLen as typenum::Unsigned>::USIZE)
 });
-key_ty!(enum VerificationKey (VerificationKeyKind){
+key_ty!(enum VerificationKey (VerificationKeyKind ; JsVerificationKey){
     SLHDSA [s] => slh_dsa::VerifyingKey<slh_dsa::Shake256s> | (<<slh_dsa::Shake256s as slh_dsa::VerifyingKeyLen>::VkLen as typenum::Unsigned>::USIZE)
 });
+macro_rules! eq_ty {
+    ($a:ident => $b:ident {$($c:ident),*}) => {
+        const _: () = {
+            impl From<&'_ $a> for $b{
+                fn from(b: &'_ $a) -> Self{
+                    match b{
+                        $($a::$c => Self::$c),*
+                    }
+                }
+            }
+            impl From<&'_ $b> for $a{
+                fn from(b: &'_ $b) -> Self{
+                    match b{
+                        $($b::$c => Self::$c),*
+                    }
+                }
+            }
+        };
+    };
+}
+eq_ty!(EncryptionKeyKind => DecryptionKeyKind {Symmetric,XWing});
+eq_ty!(SigningKeyKind => VerificationKeyKind {SLHDSA});
 impl Into<EncryptionKey> for &'_ DecryptionKey {
     fn into(self) -> EncryptionKey {
         match self {
@@ -146,6 +215,18 @@ impl EncryptionKey {
         }
     }
 }
+#[cfg_attr(feature = "wasm-bindgen", wasm_bindgen)]
+impl JsEncryptionKey {
+    #[cfg_attr(feature = "wasm-bindgen", wasm_bindgen)]
+    pub fn from_bytes(kind: EncryptionKeyKind, bytes: &[u8]) -> Option<Self> {
+        EncryptionKey::from_bytes(kind, bytes).map(Into::into)
+    }
+    #[cfg(feature = "alloc")]
+    #[cfg_attr(feature = "wasm-bindgen", wasm_bindgen)]
+    pub fn bytes_vec(&self) -> ::alloc::vec::Vec<u8> {
+        self.contents.bytes().collect()
+    }
+}
 impl DecryptionKey {
     pub fn decapsulate(&self, i: &mut (dyn Iterator<Item = u8> + '_)) -> Option<[u8; 32]> {
         match self {
@@ -203,6 +284,18 @@ impl DecryptionKey {
         }
     }
 }
+#[cfg_attr(feature = "wasm-bindgen", wasm_bindgen)]
+impl JsDecryptionKey {
+    #[cfg_attr(feature = "wasm-bindgen", wasm_bindgen)]
+    pub fn from_bytes(kind: DecryptionKeyKind, bytes: &[u8]) -> Option<Self> {
+        DecryptionKey::from_bytes(kind, bytes).map(Into::into)
+    }
+    #[cfg(feature = "alloc")]
+    #[cfg_attr(feature = "wasm-bindgen", wasm_bindgen)]
+    pub fn bytes_vec(&self) -> ::alloc::vec::Vec<u8> {
+        self.contents.bytes().collect()
+    }
+}
 impl SigningKey {
     pub fn from_bytes(kind: SigningKeyKind, bytes: &[u8]) -> Option<Self> {
         match kind {
@@ -227,6 +320,18 @@ impl SigningKey {
         match self {
             Self::SLHDSA { key } => key.sign(msg).to_bytes().into_iter(),
         }
+    }
+}
+#[cfg_attr(feature = "wasm-bindgen", wasm_bindgen)]
+impl JsSigningKey {
+    #[cfg_attr(feature = "wasm-bindgen", wasm_bindgen)]
+    pub fn from_bytes(kind: SigningKeyKind, bytes: &[u8]) -> Option<Self> {
+        SigningKey::from_bytes(kind, bytes).map(Into::into)
+    }
+    #[cfg(feature = "alloc")]
+    #[cfg_attr(feature = "wasm-bindgen", wasm_bindgen)]
+    pub fn bytes_vec(&self) -> ::alloc::vec::Vec<u8> {
+        self.contents.bytes().collect()
     }
 }
 impl VerificationKey {
@@ -255,5 +360,17 @@ impl VerificationKey {
                 Some(key.verify(msg, &c).is_ok())
             }
         }
+    }
+}
+#[cfg_attr(feature = "wasm-bindgen", wasm_bindgen)]
+impl JsVerificationKey {
+    #[cfg_attr(feature = "wasm-bindgen", wasm_bindgen)]
+    pub fn from_bytes(kind: VerificationKeyKind, bytes: &[u8]) -> Option<Self> {
+        VerificationKey::from_bytes(kind, bytes).map(Into::into)
+    }
+    #[cfg(feature = "alloc")]
+    #[cfg_attr(feature = "wasm-bindgen", wasm_bindgen)]
+    pub fn bytes_vec(&self) -> ::alloc::vec::Vec<u8> {
+        self.contents.bytes().collect()
     }
 }

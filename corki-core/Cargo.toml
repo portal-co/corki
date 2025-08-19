@@ -7,9 +7,16 @@ description = "The core cryptographic types and poerations used across all porta
 
 [dependencies]
 either = { version = "1.15.0", default-features = false }
+hash-based-signature = "0.1.1"
 hybrid-array = "0.3.1"
 kem = "0.3.0-pre"
 rand = { version = "0.8", default-features = false }
+sha3 = { version = "0.10.8", default-features = false }
 slh-dsa = { version = "0.0.3", default-features = false }
 typenum = "1.18.0"
+wasm-bindgen = { workspace = true, optional = true }
 x-wing = "0.0.1-pre.1"
+
+[features]
+wasm-bindgen = ["dep:wasm-bindgen","alloc"]
+alloc=[]

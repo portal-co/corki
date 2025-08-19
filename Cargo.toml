@@ -6,4 +6,4 @@ resolver="3"
 license = "MPL-2.0"
 
 [workspace.dependencies]
-wasm-bindgen = "^0.2.100"
+wasm-bindgen = {version="^0.2.100",default-features=false}
