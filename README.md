@@ -1,13 +1,14 @@
 # @portal-solutions/corki
 
 ## Description
-Project corki
+A Rust/WebAssembly workspace, likely containing core logic (`corki-core`) utilizing `wasm-bindgen` for JavaScript interoperability.
 
 ## Goals
-- [ ] Add project goals
+- [ ] Implement core WASM functionality
+- [ ] Expose interfaces via `wasm-bindgen`
 
 ## Progress
-- [ ] Initial setup
+- [ ] Workspace initialized with `corki-core`
 
 ---
 *AI assisted*
